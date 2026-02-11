@@ -1,0 +1,35 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-prod:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://shop.example.com
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - uses: hashicorp/setup-terraform@v3
+      - name: Terraform apply (prod)
+        working-directory: terraform/environments/prod
+        run: |
+          terraform init -backend-config=../../backend.tf
+          terraform apply -auto-approve -var="db_password=${{ secrets.DB_PASSWORD_PROD }}"
+      - name: Blue/Green deployment rollout
+        run: |
+          kubectl apply -k kubernetes/overlays/prod
+          kubectl rollout status deployment/backend -n ecommerce-prod --timeout=180s
+          kubectl rollout status deployment/frontend -n ecommerce-prod --timeout=180s
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          kubectl rollout undo deployment/backend -n ecommerce-prod
+          kubectl rollout undo deployment/frontend -n ecommerce-prod
+      - name: Post-deploy verification
+        run: kubectl get ingress -n ecommerce-prod

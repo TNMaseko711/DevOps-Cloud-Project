@@ -1,0 +1,28 @@
+name: Deploy Staging
+
+on:
+  workflow_run:
+    workflows: ["Deploy Dev"]
+    types: [completed]
+
+jobs:
+  deploy-staging:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - uses: hashicorp/setup-terraform@v3
+      - name: Terraform apply (staging)
+        working-directory: terraform/environments/staging
+        run: |
+          terraform init -backend-config=../../backend.tf
+          terraform apply -auto-approve -var="db_password=${{ secrets.DB_PASSWORD_STAGING }}"
+      - name: Deploy manifests
+        run: kubectl apply -k kubernetes/overlays/staging
+      - name: Integration tests
+        run: python tests/integration/test_api.py

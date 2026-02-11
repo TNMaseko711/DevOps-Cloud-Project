@@ -1,0 +1,13 @@
+graph TD
+  GitHub[GitHub Repo] --> Actions[GitHub Actions]
+  Actions --> Terraform[Terraform IaC]
+  Terraform --> AWS[AWS Account]
+  AWS --> EKS[EKS Cluster]
+  AWS --> RDS[RDS PostgreSQL]
+  AWS --> ALB[Application Load Balancer]
+  EKS --> FE[Frontend Pod]
+  EKS --> BE[Backend Pod]
+  BE --> RDS
+  EKS --> Prom[Prometheus]
+  Prom --> Grafana[Grafana]
+  AWS --> CW[CloudWatch + SNS]

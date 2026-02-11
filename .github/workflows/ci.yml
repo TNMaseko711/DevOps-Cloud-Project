@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build-test-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Backend lint/test
+        working-directory: services/backend
+        run: |
+          pip install -r requirements-dev.txt
+          ruff check src tests
+          pytest --maxfail=1 --disable-warnings --cov=src --cov-report=term
+
+      - name: Frontend unit test
+        working-directory: services/frontend
+        run: |
+          python -m pip install pytest
+          pytest tests/test_frontend.py
+
+      - name: Terraform format check
+        run: terraform fmt -check -recursive terraform
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and tag images
+        env:
+          SHA: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          docker build -t backend:${SHA} services/backend
+          docker build -t frontend:${SHA} services/frontend
+
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: backend:${{ github.sha }}
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true

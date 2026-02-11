@@ -1,0 +1,11 @@
+namespace: ecommerce-prod
+resources:
+  - ../../base
+patches:
+  - target:
+      kind: ConfigMap
+      name: app-config
+    patch: |-
+      - op: replace
+        path: /data/APP_ENVIRONMENT
+        value: prod
