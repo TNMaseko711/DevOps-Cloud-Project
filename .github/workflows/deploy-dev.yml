@@ -1,0 +1,30 @@
+name: Deploy Dev
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+jobs:
+  deploy-dev:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - uses: hashicorp/setup-terraform@v3
+      - name: Terraform apply (dev)
+        working-directory: terraform/environments/dev
+        run: |
+          terraform init -backend-config=../../backend.tf
+          terraform apply -auto-approve -var="db_password=${{ secrets.DB_PASSWORD_DEV }}"
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name ecommerce-dev --region ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: Deploy manifests
+        run: kubectl apply -k kubernetes/overlays/dev
+      - name: Smoke test
+        run: kubectl get pods -n ecommerce-dev
